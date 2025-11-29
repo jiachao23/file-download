@@ -1,0 +1,13 @@
+### GET request to example server
+POST http://localhost:8080/api/download/single/local
+Content-Type: application/json
+
+{
+  "filePath": "/Users/jcohy/Downloads/zou.pkg",
+  "rangeStart": 0,
+  "rateLimit": 1048576
+}
+
+
+
+###
