@@ -202,30 +202,47 @@
               <a-progress
                   :percent="task.progress"
                   :status="getProgressStatus(task)"
-                  size="default"
-                  :stroke-color="{
-                  'active': '#1677ff',
-                  'success': '#52c41a',
-                  'exception': '#ff4d4f'
-                }"
-                  class="task-progress"
-                  style="margin: 10px 0;"
+                  :stroke-color="getStageColor(task.currentStage)"
+              class="task-progress"
+              style="margin: 10px 0;"
               />
 
               <!-- 任务信息 -->
               <a-space direction="vertical" size="middle" class="task-info" style="width: 100%;">
+                <!-- 阶段显示 -->
+                <div style="font-size: 13px; color: #1890ff;">
+                  {{ getStageText(task.currentStage) }}
+                </div>
+
                 <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <!-- 进度文案根据阶段切换 -->
                   <a-text style="font-size: 14px; color: #333;">
-                    {{ formatBytes(task.downloadedBytes) }} / {{ formatBytes(task.totalBytes) }}
+                    <template v-if="task.currentStage === 'DOWNLOADING'">
+                      文件进度：{{ task.completedCount }}/{{ task.totalCount }}
+                    </template>
+                    <template v-if="task.currentStage === 'PACKAGING'">
+                      打包进度：{{ task.stageProgress }}%
+                    </template>
+                    <template v-if="task.currentStage === 'COMPLETED'">
+                      处理完成
+                    </template>
                   </a-text>
                   <a-tag :color="getStatusColor(task)" size="small">
                     {{ getTaskStatusText(task) }}
                   </a-tag>
                 </div>
+<!--                <div style="display: flex; justify-content: space-between; align-items: center;">-->
+<!--                  <a-text style="font-size: 14px; color: #333;">-->
+<!--                    {{ formatBytes(task.downloadedBytes) }} / {{ formatBytes(task.totalBytes) }}-->
+<!--                  </a-text>-->
+<!--                  <a-tag :color="getStatusColor(task)" size="small">-->
+<!--                    {{ getTaskStatusText(task) }}-->
+<!--                  </a-tag>-->
+<!--                </div>-->
 
-                <a-text v-if="task.type === 'multi'" style="font-size: 13px; color: #666;">
-                  文件进度：{{ task.completedCount }}/{{ task.totalCount }}
-                </a-text>
+<!--                <a-text v-if="task.type === 'multi'" style="font-size: 13px; color: #666;">-->
+<!--                  文件进度：{{ task.completedCount }}/{{ task.totalCount }}-->
+<!--                </a-text>-->
 
                 <a-text
                     v-if="task.filePath"
@@ -258,6 +275,15 @@ import sse, {createSSE} from "../api/sse.ts";
 type TaskType = 'single' | 'multi';
 type ProgressStatus = 'active' | 'success' | 'exception';
 
+const getStageColor = (stage: string): string => {
+  const colorMap = {
+    'DOWNLOADING': '#1677ff', // 蓝色
+    'PACKAGING': '#faad14', // 黄色
+    'COMPLETED': '#52c41a' // 绿色
+  };
+  return colorMap[stage] || '#1677ff';
+};
+
 interface DownloadTask {
   taskId: string;
   type: TaskType;
@@ -275,6 +301,17 @@ interface DownloadTask {
 interface SingleForm {
   filePath: string;
 }
+
+// 阶段文本转换
+const getStageText = (stage: string): string => {
+  console.log(stage)
+  const stageMap = {
+    'DOWNLOADING': '正在下载文件...',
+    'PACKAGING': '正在打包文件...',
+    'COMPLETED': '处理完成'
+  };
+  return stageMap[stage] || '处理中';
+};
 
 interface MultiForm {
   userId: string;
@@ -477,6 +514,7 @@ const handleSingleDownload = async (): Promise<void> => {
     taskId,
     type: 'single',
     filePath: singleForm.filePath,
+    currentStage: 'DOWNLOADING' | 'PACKAGING' | 'COMPLETED', // 当前阶段
     progress: 0,
     downloadedBytes: 0,
     totalBytes: 0,

@@ -26,17 +26,18 @@ public class UserDownloadTask implements Serializable {
 	// 失败文件数
 	private int failedCount;
 	// 总字节数
-	private long totalBytes;
+//	private long totalBytes;
 	// 已下载字节数
-	private long downloadedBytes;
+//	private long downloadedBytes;
 	// 下载进度（0-100）
-	private int progress;
+	private int stageProgress;
 	// 是否完成
 	private boolean finished;
+	private String filePath;
 	// 是否取消
 	private boolean cancelled;
 	private long rangeStart;
-	private TaskStatus status;
+	private TaskStage currentStage;
 	private boolean directDownload; // 是否前端直传
 	private int compressionLevel; // 压缩级别（多文件生效）
 	private int currentFileIndex; // 当前文件索引（断点用）
@@ -62,7 +63,7 @@ public class UserDownloadTask implements Serializable {
 
 		public BreakpointInfo(UserDownloadTask task) {
 			this.taskId = task.getTaskId();
-			this.downloadedBytes = task.getDownloadedBytes();
+//			this.downloadedBytes = task.getDownloadedBytes();
 			this.completedCount = task.getCompletedCount();
 			this.failedCount = task.getFailedCount();
 			this.currentFileIndex = task.getCurrentFileIndex();
@@ -70,7 +71,7 @@ public class UserDownloadTask implements Serializable {
 		}
 	}
 
-	public enum TaskStatus {
-		WAITING, DOWNLOADING, COMPLETED, FAILED, PAUSED
+	public enum TaskStage {
+		WAITING, DOWNLOADING, PACKAGING,COMPLETED, FAILED, PAUSED
 	}
 }

@@ -1,4 +1,9 @@
 package com.example.demo.defect;
 
-public class DownloadTypes {
+import java.util.List;
+import java.util.Map;
+
+public interface DownloadTypes {
+	String entityName();
+	List<String> getDownloadTypes();
 }

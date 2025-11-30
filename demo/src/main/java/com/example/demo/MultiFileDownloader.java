@@ -1,9 +1,7 @@
 package com.example.demo;
 
 import com.alibaba.fastjson.JSON;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.LoadingCache;
-import com.google.common.cache.CacheLoader;
+import com.example.demo.UserDownloadTask.TaskStage;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,15 +62,16 @@ public class MultiFileDownloader {
 		task.setTotalCount(filePathList.size());
 		task.setCompletedCount(0);
 		task.setFailedCount(0);
-		task.setProgress(0);
+		task.setStageProgress(0);
 		task.setFinished(false);
 		task.setCancelled(false);
 
 		// 异步计算文件总大小（避免阻塞）
-		calculateTotalFileSizeAsync(filePathList).thenAccept(totalBytes -> {
-			task.setTotalBytes(totalBytes);
-			taskManager.saveTask(task);
-		});
+//
+//		calculateTotalFileSizeAsync(filePathList).thenAccept(totalBytes -> {
+//			task.setTotalBytes(totalBytes);
+//			taskManager.saveTask(task);
+//		});
 
 		// 保存初始任务
 		taskManager.saveTask(task);
@@ -99,8 +98,9 @@ public class MultiFileDownloader {
 	private void downloadFiles(UserDownloadTask task) {
 		List<String> filePathList = task.getFilePathList();
 		String userId = task.getUserId();
+		int totalCount = task.getTotalCount(); // 总文件数
 
-		// 创建用户目录
+		// 创建用户目录（代码不变）
 		File userDir = new File("/tmp/download/" + userId + "/" + task.getTaskId());
 		if (!userDir.exists() && !userDir.mkdirs()) {
 			log.error("创建用户目录失败：{}", userDir.getAbsolutePath());
@@ -110,9 +110,13 @@ public class MultiFileDownloader {
 			return;
 		}
 
+		// 1. 下载阶段
+		task.setCurrentStage(TaskStage.DOWNLOADING);
+		taskManager.saveTask(task);
+
 		// 遍历下载文件
 		for (String filePath : filePathList) {
-			// 检查任务是否被取消
+			// 检查任务是否被取消（代码不变）
 			if (task.isCancelled()) {
 				log.info("下载任务已取消：{}", task.getTaskId());
 				break;
@@ -132,30 +136,53 @@ public class MultiFileDownloader {
 
 				byte[] buffer = new byte[64 * 1024]; // 64KB缓冲区
 				int bytesRead;
-				long bytesWritten = 0;
-				long startTime = System.currentTimeMillis();
 
-				// 分片下载（限速+进度更新）
+				// 下载文件（仅保留文件复制逻辑，移除字节数统计对进度的影响）
 				while ((bytesRead = bis.read(buffer)) != -1) {
 					if (task.isCancelled()) {
 						break;
 					}
-
 					bos.write(buffer, 0, bytesRead);
-					bytesWritten += bytesRead;
-					task.setDownloadedBytes(task.getDownloadedBytes() + bytesRead);
-
-					// 计算进度（仅在进度变化时更新）
-					int newProgress = (int) ((double) task.getDownloadedBytes() /
-							(task.getTotalBytes() > 0 ? task.getTotalBytes() : 1) * 100);
-					if (newProgress != task.getProgress()) {
-						task.setProgress(Math.min(newProgress, 100));
-						taskManager.saveTask(task);
-					}
+					// 移除：基于字节数的进度更新（不再需要）
+					// task.setDownloadedBytes(task.getDownloadedBytes() + bytesRead);
 				}
 
 				if (!task.isCancelled()) {
-					task.setCompletedCount(task.getCompletedCount() + 1);
+					task.setCompletedCount(task.getCompletedCount() + 1); // 成功下载，完成数+1
+					// 基于文件数量计算进度：(已完成数 / 总数) * 100
+					int newProgress = (int) (((double) task.getCompletedCount() / totalCount) * 100);
+					task.setStageProgress(Math.min(newProgress, 100)); // 避免超过100%
+					taskManager.saveTask(task); // 实时更新进度
+				}
+				// 2. 打包阶段（下载完成后）
+				if (!task.isCancelled() && task.getCompletedCount() > 0) {
+					task.setCurrentStage(TaskStage.PACKAGING);
+					task.setStageProgress(0); // 重置阶段进度
+					taskManager.saveTask(task);
+
+					try {
+						// 获取下载的文件列表
+						File[] downloadedFiles = userDir.listFiles();
+						if (downloadedFiles != null && downloadedFiles.length > 0) {
+							int fileCount = downloadedFiles.length;
+							// 模拟打包进度（实际应根据打包处理逻辑更新）
+							for (int i = 0; i <= 100; i += 5) {
+								// 每5%更新一次进度
+								task.setStageProgress(i);
+								// 总进度 = 下载进度(100%) + 打包进度(100%) → 映射到0-100
+								task.setStageProgress(100 - (int) ((100 - i) * 0.5)); // 打包阶段占总进度的50%
+								taskManager.saveTask(task);
+								Thread.sleep(200); // 模拟打包耗时
+							}
+
+							// 打包完成（生成最终压缩包路径）
+							String zipPath = userDir.getAbsolutePath() + ".zip";
+							task.setFilePath(zipPath); // 记录压缩包路径
+						}
+					} catch (Exception e) {
+						log.error("文件打包失败", e);
+						task.setFailedCount(task.getFailedCount() + 1);
+					}
 				}
 			} catch (Exception e) {
 				log.error("下载文件失败：{}", filePath, e);
@@ -165,30 +192,16 @@ public class MultiFileDownloader {
 			}
 		}
 
-		// 标记任务完成
+		// 任务结束时强制进度为100%（无论成功失败，确保最终状态正确）
 		if (!task.isCancelled()) {
+			task.setCurrentStage(TaskStage.COMPLETED);
+			task.setStageProgress(100);
+			task.setStageProgress(100);
 			task.setFinished(true);
-			task.setProgress(100);
 			taskManager.saveTask(task);
 			log.info("多文件下载任务完成：{}，成功：{}，失败：{}",
 					task.getTaskId(), task.getCompletedCount(), task.getFailedCount());
 		}
-	}
-
-	/**
-	 * 异步计算文件总大小
-	 */
-	private CompletableFuture<Long> calculateTotalFileSizeAsync(List<String> filePathList) {
-		return CompletableFuture.supplyAsync(() -> {
-			long total = 0;
-			for (String path : filePathList) {
-				File file = new File(path);
-				if (file.exists()) {
-					total += file.length();
-				}
-			}
-			return total;
-		}, executorService);
 	}
 
 	/**
@@ -244,27 +257,15 @@ public class MultiFileDownloader {
 				task = taskManager.getTaskById(taskId);
 				if (task == null) break;
 
-				if (task.getProgress() != lastProgress) {
-//					Map<String, Object> progressData = new HashMap<>();
-//					progressData.put("taskId", task.getTaskId());
-//					progressData.put("progress", task.getProgress());
-//					progressData.put("completedCount", task.getCompletedCount());
-//					progressData.put("failedCount", task.getFailedCount());
-//					progressData.put("totalCount", task.getTotalCount());
-//					progressData.put("downloadedBytes", task.getDownloadedBytes());
-//					progressData.put("totalBytes", task.getTotalBytes());
-//					progressData.put("finished", task.isFinished());
-//					progressData.put("cancelled", task.isCancelled());
-//					progressData.put("code", 200);
-
+				if (task.getStageProgress() != lastProgress) {
 					// SSE消息必须以"data: "开头，"\n\n"结尾
 					writer.write("data: " + JSON.toJSONString(task) + "\n\n");
 					writer.flush();
-					lastProgress = task.getProgress();
+					lastProgress = task.getStageProgress();
 				}
 
 				// 动态休眠：进度变化快则休眠短，反之则长
-				long sleepTime = task.getProgress() < 50 ? 500 : 1000;
+				long sleepTime = task.getStageProgress() < 50 ? 500 : 1000;
 				Thread.sleep(sleepTime);
 
 				// 检查客户端连接是否断开
@@ -274,14 +275,7 @@ public class MultiFileDownloader {
 				}
 			}
 
-			// 推送最终状态
-//			Map<String, Object> finalData = new HashMap<>();
-//			finalData.put("taskId", task.getTaskId());
-//			finalData.put("progress", task.getProgress());
-//			finalData.put("finished", task.isFinished());
-//			finalData.put("cancelled", task.isCancelled());
-//			finalData.put("code", 200);
-
+			System.out.println(JSON.toJSONString(task));
 			writer.write("data: " + JSON.toJSONString(task) + "\n\n");
 			writer.flush();
 
