@@ -17,10 +17,6 @@
           <label>服务器文件路径：</label>
           <input v-model="singleForm.filePath" placeholder="如：/data/files/test.pdf" />
         </div>
-        <div class="form-item">
-          <label>下载限速（字节/秒）：</label>
-          <input v-model.number="singleForm.rateLimit" placeholder="默认1048576（1MB/s）" />
-        </div>
         <div class="btn-group">
           <button class="btn primary" @click="handleSingleDownload" :disabled="singleDownloading">
             {{ singleDownloading ? '下载中...' : '开始下载' }}
@@ -40,10 +36,6 @@
         <div class="form-item">
           <label>服务器文件路径（每行一个）：</label>
           <textarea v-model="multiForm.filePathStr" rows="5" placeholder="/data/files/test1.pdf&#10;/data/files/test2.zip"></textarea>
-        </div>
-        <div class="form-item">
-          <label>下载限速（字节/秒）：</label>
-          <input v-model.number="multiForm.rateLimit" placeholder="默认1048576" />
         </div>
         <button class="btn primary" @click="handleMultiSubmit" :disabled="multiSubmitting">
           {{ multiSubmitting ? '提交中...' : '提交下载任务' }}
@@ -203,7 +195,6 @@ const isSidebarExpanded = ref(false);
 // 单文件下载状态
 const singleForm = reactive({
   filePath: '',
-  rateLimit: 1024 * 1024
 });
 const singleDownloading = ref(false);
 let singleAbortController = null;
@@ -212,7 +203,6 @@ let singleAbortController = null;
 const multiForm = reactive({
   userId: '',
   filePathStr: '',
-  rateLimit: 1024 * 1024
 });
 const multiSubmitting = ref(false);
 
@@ -425,7 +415,6 @@ const handleSingleDownload = async () => {
         {
           filePath: singleForm.filePath,
           rangeStart: 0,
-          rateLimit: singleForm.rateLimit
         },
         singleAbortController.signal
     );
@@ -519,7 +508,6 @@ const handleMultiSubmit = async () => {
     const taskId = await submitMultiLocalFileTask(
         filePathList,
         multiForm.userId,
-        multiForm.rateLimit
     );
 
     // 初始化本地任务

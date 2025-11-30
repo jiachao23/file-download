@@ -56,7 +56,7 @@ public class MultiFileDownloader {
 	/**
 	 * 提交多文件下载任务
 	 */
-	public String submitMultiFileTask(List<String> filePathList, String userId, long rateLimit) {
+	public String submitMultiFileTask(List<String> filePathList, String userId) {
 		if (CollectionUtils.isEmpty(filePathList)) {
 			throw new IllegalArgumentException("文件路径列表不能为空");
 		}
@@ -69,7 +69,6 @@ public class MultiFileDownloader {
 		task.setTaskId(taskId);
 		task.setUserId(userId);
 		task.setFilePathList(filePathList.toArray(new String[0]));
-		task.setRateLimit(rateLimit);
 		task.setTotalCount(filePathList.size());
 		task.setCompletedCount(0);
 		task.setFailedCount(0);
@@ -108,7 +107,6 @@ public class MultiFileDownloader {
 	private void downloadFiles(UserDownloadTask task) {
 		String[] filePathList = task.getFilePathList();
 		String userId = task.getUserId();
-		long rateLimit = task.getRateLimit();
 
 		// 创建用户目录
 		File userDir = new File("/tmp/download/" + userId + "/" + task.getTaskId());
@@ -161,15 +159,6 @@ public class MultiFileDownloader {
 					if (newProgress != task.getProgress()) {
 						task.setProgress(Math.min(newProgress, 100));
 						saveTask(task);
-					}
-
-					// 限速控制（优化算法）
-					if (rateLimit > 0) {
-						long elapsedTime = System.currentTimeMillis() - startTime;
-						long expectedTime = (bytesWritten * 1000) / rateLimit;
-						if (elapsedTime < expectedTime) {
-							Thread.sleep(Math.min(10, expectedTime - elapsedTime));
-						}
 					}
 				}
 

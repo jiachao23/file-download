@@ -24,7 +24,7 @@ public class SingleFileDownloader {
 	/**
 	 * 下载服务器本地文件（支持限速和NIO优化）
 	 */
-	public void downloadLocalFile(String filePath, long rangeStart, long rateLimit, HttpServletResponse response) throws Exception {
+	public void downloadLocalFile(String filePath, long rangeStart, HttpServletResponse response) throws Exception {
 		long startTime = System.currentTimeMillis();
 		File file = new File(filePath);
 
@@ -58,13 +58,6 @@ public class SingleFileDownloader {
 				buffer.flip();
 
 				// 限速控制（优化算法：避免频繁sleep）
-				if (rateLimit > 0) {
-					long elapsedTime = System.currentTimeMillis() - startTime;
-					long expectedTime = (bytesWritten * 1000) / rateLimit;
-					if (elapsedTime < expectedTime) {
-						Thread.sleep(Math.min(10, expectedTime - elapsedTime)); // 最多sleep10ms
-					}
-				}
 
 				bytesWritten += outChannel.write(buffer);
 				buffer.clear();

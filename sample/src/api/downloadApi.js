@@ -55,9 +55,9 @@ export const downloadSingleLocalFile = async (params, signal) => {
 /**
  * 提交多文件下载任务
  */
-export const submitMultiLocalFileTask = async (filePathList, userId, rateLimit = 1024 * 1024) => {
+export const submitMultiLocalFileTask = async (filePathList, userId) => {
     const res = await request.post('/multi/local/submit', filePathList, {
-        params: { userId, rateLimit }
+        params: { userId }
     });
     return res.data;
 };

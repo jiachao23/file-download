@@ -29,10 +29,9 @@ public class DownloadController {
 	public void downloadSingleLocalFile(
 			@RequestParam String filePath,
 			@RequestParam(defaultValue = "0") long rangeStart,
-			@RequestParam(defaultValue = "1048576") long rateLimit,
 			HttpServletResponse response) {
 		try {
-			singleFileDownloader.downloadLocalFile(filePath, rangeStart, rateLimit, response);
+			singleFileDownloader.downloadLocalFile(filePath, rangeStart, response);
 		} catch (Exception e) {
 			response.setStatus(HttpServletResponse.SC_NOT_FOUND);
 			try {
@@ -50,10 +49,9 @@ public class DownloadController {
 	@PostMapping("/multi/local/submit")
 	public ResponseEntity<String> submitMultiLocalFileTask(
 			@RequestBody List<String> filePathList,
-			@RequestParam String userId,
-			@RequestParam(defaultValue = "1048576") long rateLimit) {
+			@RequestParam String userId) {
 		try {
-			String taskId = multiFileDownloader.submitMultiFileTask(filePathList, userId, rateLimit);
+			String taskId = multiFileDownloader.submitMultiFileTask(filePathList, userId);
 			return ResponseEntity.ok(taskId);
 		} catch (Exception e) {
 			log.error("提交多文件下载任务失败", e);

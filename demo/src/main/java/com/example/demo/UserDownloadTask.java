@@ -16,8 +16,6 @@ public class UserDownloadTask implements Serializable {
 	private String userId;
 	// 文件路径列表
 	private String[] filePathList;
-	// 下载限速（字节/秒）
-	private long rateLimit = 1024 * 1024;
 	// 总文件数
 	private int totalCount;
 	// 已完成文件数
