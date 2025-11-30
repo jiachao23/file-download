@@ -71,66 +71,6 @@ export const cancelMultiFileTask = async (taskId) => {
 };
 
 /**
- * 监听任务进度（优化版SSE）
- */
-export const listenMultiFileProgress = (taskId, onMessage, onError) => {
-    let retryCount = 0;
-    let source = null;
-
-    // 指数退避重连
-    const connect = () => {
-        // 关闭旧连接
-        if (source) {
-            source.close();
-        }
-
-        source = new EventSource(`${baseURL}/task/progress/${taskId}`);
-
-        source.onmessage = (e) => {
-            try {
-                const data = JSON.parse(e.data);
-                onMessage(data);
-                retryCount = 0; // 成功接收消息重置重试次数
-
-                // 任务完成/取消/不存在时关闭连接
-                if (data.code === 404 || data.isFinished || data.isCancelled) {
-                    source.close();
-                }
-            } catch (parseError) {
-                console.error('SSE消息解析失败：', parseError, e.data);
-                onError(new Error('进度消息格式错误'));
-            }
-        };
-
-        source.onerror = (e) => {
-            source.close();
-
-            // 指数退避重连：1s, 2s, 4s, 8s... 最大30s
-            const delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
-            retryCount++;
-
-            if (retryCount <= 5) { // 最多重试5次
-                setTimeout(connect, delay);
-                onError(new Error(`SSE断开，${delay/1000}秒后重试（${retryCount}/5）`));
-            } else {
-                onError(new Error('SSE重连次数达到上限，请手动刷新'));
-            }
-        };
-    };
-
-    connect();
-
-    return {
-        source,
-        close: () => {
-            if (source) {
-                source.close();
-            }
-        }
-    };
-};
-
-/**
  * 查询单个任务状态（带缓存）
  */
 export const getTaskStatus = async (taskId) => {
@@ -178,7 +118,6 @@ export default {
     downloadSingleLocalFile,
     submitMultiLocalFileTask,
     cancelMultiFileTask,
-    listenMultiFileProgress,
     getTaskStatus,
     getAllTasks,
     clearRequestCache

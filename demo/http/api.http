@@ -3,11 +3,9 @@ POST http://localhost:8080/api/download/single/local
 Content-Type: application/json
 
 {
-  "filePath": "/Users/jcohy/Downloads/zou.pkg",
+  "filePath": "/Users/jcohy/Downloads/zou.pkg，/Users/jcohy/Downloads/Mac.dmg",
   "rangeStart": 0,
   "rateLimit": 1048576
 }
-
-
 
 ###

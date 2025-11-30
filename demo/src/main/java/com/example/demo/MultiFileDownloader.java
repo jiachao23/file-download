@@ -5,6 +5,8 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 import com.google.common.cache.CacheLoader;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -22,18 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Service
 public class MultiFileDownloader {
 	// 任务存储（线程安全）
-	private final Map<String, UserDownloadTask> taskRepository = new ConcurrentHashMap<>();
-
-	// 本地缓存（Guava Cache）
-	private final LoadingCache<String, UserDownloadTask> taskCache = CacheBuilder.newBuilder()
-			.maximumSize(1000) // 最大缓存1000个任务
-			.expireAfterWrite(5, TimeUnit.MINUTES) // 5分钟过期
-			.build(new CacheLoader<String, UserDownloadTask>() {
-				@Override
-				public UserDownloadTask load(String taskId) {
-					return taskRepository.get(taskId); // 缓存未命中时从仓库获取
-				}
-			});
+	@Autowired
+	private DownloadTaskManager taskManager;
 
 	// 优化线程池配置
 	private final ExecutorService executorService = new ThreadPoolExecutor(
@@ -68,7 +60,7 @@ public class MultiFileDownloader {
 		UserDownloadTask task = new UserDownloadTask();
 		task.setTaskId(taskId);
 		task.setUserId(userId);
-		task.setFilePathList(filePathList.toArray(new String[0]));
+		task.setFilePathList(filePathList);
 		task.setTotalCount(filePathList.size());
 		task.setCompletedCount(0);
 		task.setFailedCount(0);
@@ -79,11 +71,11 @@ public class MultiFileDownloader {
 		// 异步计算文件总大小（避免阻塞）
 		calculateTotalFileSizeAsync(filePathList).thenAccept(totalBytes -> {
 			task.setTotalBytes(totalBytes);
-			saveTask(task);
+			taskManager.saveTask(task);
 		});
 
 		// 保存初始任务
-		saveTask(task);
+		taskManager.saveTask(task);
 
 		// 异步执行下载
 		executorService.submit(() -> {
@@ -92,7 +84,7 @@ public class MultiFileDownloader {
 			} catch (Exception e) {
 				task.setFailedCount(task.getTotalCount());
 				task.setFinished(true);
-				saveTask(task);
+				taskManager.saveTask(task);
 				log.error("多文件下载任务执行失败：{}", taskId, e);
 			}
 		});
@@ -105,7 +97,7 @@ public class MultiFileDownloader {
 	 * 执行文件下载（带进度更新）
 	 */
 	private void downloadFiles(UserDownloadTask task) {
-		String[] filePathList = task.getFilePathList();
+		List<String> filePathList = task.getFilePathList();
 		String userId = task.getUserId();
 
 		// 创建用户目录
@@ -114,7 +106,7 @@ public class MultiFileDownloader {
 			log.error("创建用户目录失败：{}", userDir.getAbsolutePath());
 			task.setFailedCount(task.getTotalCount());
 			task.setFinished(true);
-			saveTask(task);
+			taskManager.saveTask(task);
 			return;
 		}
 
@@ -130,7 +122,7 @@ public class MultiFileDownloader {
 			if (!file.exists()) {
 				log.warn("文件不存在：{}", filePath);
 				task.setFailedCount(task.getFailedCount() + 1);
-				saveTask(task);
+				taskManager.saveTask(task);
 				continue;
 			}
 
@@ -158,7 +150,7 @@ public class MultiFileDownloader {
 							(task.getTotalBytes() > 0 ? task.getTotalBytes() : 1) * 100);
 					if (newProgress != task.getProgress()) {
 						task.setProgress(Math.min(newProgress, 100));
-						saveTask(task);
+						taskManager.saveTask(task);
 					}
 				}
 
@@ -169,7 +161,7 @@ public class MultiFileDownloader {
 				log.error("下载文件失败：{}", filePath, e);
 				task.setFailedCount(task.getFailedCount() + 1);
 			} finally {
-				saveTask(task);
+				taskManager.saveTask(task);
 			}
 		}
 
@@ -177,7 +169,7 @@ public class MultiFileDownloader {
 		if (!task.isCancelled()) {
 			task.setFinished(true);
 			task.setProgress(100);
-			saveTask(task);
+			taskManager.saveTask(task);
 			log.info("多文件下载任务完成：{}，成功：{}，失败：{}",
 					task.getTaskId(), task.getCompletedCount(), task.getFailedCount());
 		}
@@ -203,7 +195,7 @@ public class MultiFileDownloader {
 	 * 取消下载任务
 	 */
 	public String cancelTask(String taskId) {
-		UserDownloadTask task = getTaskById(taskId);
+		UserDownloadTask task = taskManager.getTaskById(taskId);
 		if (task == null) {
 			String msg = "任务不存在：" + taskId;
 			log.warn(msg);
@@ -216,7 +208,7 @@ public class MultiFileDownloader {
 		}
 
 		task.setCancelled(true);
-		saveTask(task);
+		taskManager.saveTask(task);
 		String msg = "任务已取消：" + taskId;
 		log.info(msg);
 		return JSON.toJSONString(Map.of("code", 200, "msg", msg));
@@ -236,7 +228,7 @@ public class MultiFileDownloader {
 		PrintWriter writer = null;
 		try {
 			writer = response.getWriter();
-			UserDownloadTask task = getTaskById(taskId);
+			UserDownloadTask task = taskManager.getTaskById(taskId);
 
 			// 任务不存在直接返回
 			if (task == null) {
@@ -249,24 +241,24 @@ public class MultiFileDownloader {
 			// 仅在进度变化/状态变化时推送
 			while (!task.isFinished() && !task.isCancelled()) {
 				// 重新获取最新任务状态
-				task = getTaskById(taskId);
+				task = taskManager.getTaskById(taskId);
 				if (task == null) break;
 
 				if (task.getProgress() != lastProgress) {
-					Map<String, Object> progressData = new HashMap<>();
-					progressData.put("taskId", task.getTaskId());
-					progressData.put("progress", task.getProgress());
-					progressData.put("completedCount", task.getCompletedCount());
-					progressData.put("failedCount", task.getFailedCount());
-					progressData.put("totalCount", task.getTotalCount());
-					progressData.put("downloadedBytes", task.getDownloadedBytes());
-					progressData.put("totalBytes", task.getTotalBytes());
-					progressData.put("isFinished", task.isFinished());
-					progressData.put("isCancelled", task.isCancelled());
-					progressData.put("code", 200);
+//					Map<String, Object> progressData = new HashMap<>();
+//					progressData.put("taskId", task.getTaskId());
+//					progressData.put("progress", task.getProgress());
+//					progressData.put("completedCount", task.getCompletedCount());
+//					progressData.put("failedCount", task.getFailedCount());
+//					progressData.put("totalCount", task.getTotalCount());
+//					progressData.put("downloadedBytes", task.getDownloadedBytes());
+//					progressData.put("totalBytes", task.getTotalBytes());
+//					progressData.put("finished", task.isFinished());
+//					progressData.put("cancelled", task.isCancelled());
+//					progressData.put("code", 200);
 
 					// SSE消息必须以"data: "开头，"\n\n"结尾
-					writer.write("data: " + JSON.toJSONString(progressData) + "\n\n");
+					writer.write("data: " + JSON.toJSONString(task) + "\n\n");
 					writer.flush();
 					lastProgress = task.getProgress();
 				}
@@ -283,14 +275,14 @@ public class MultiFileDownloader {
 			}
 
 			// 推送最终状态
-			Map<String, Object> finalData = new HashMap<>();
-			finalData.put("taskId", task.getTaskId());
-			finalData.put("progress", task.getProgress());
-			finalData.put("isFinished", task.isFinished());
-			finalData.put("isCancelled", task.isCancelled());
-			finalData.put("code", 200);
+//			Map<String, Object> finalData = new HashMap<>();
+//			finalData.put("taskId", task.getTaskId());
+//			finalData.put("progress", task.getProgress());
+//			finalData.put("finished", task.isFinished());
+//			finalData.put("cancelled", task.isCancelled());
+//			finalData.put("code", 200);
 
-			writer.write("data: " + JSON.toJSONString(finalData) + "\n\n");
+			writer.write("data: " + JSON.toJSONString(task) + "\n\n");
 			writer.flush();
 
 		} catch (Exception e) {
@@ -302,37 +294,6 @@ public class MultiFileDownloader {
 		}
 	}
 
-	/**
-	 * 保存任务（更新缓存）
-	 */
-	public void saveTask(UserDownloadTask task) {
-		taskRepository.put(task.getTaskId(), task);
-		taskCache.invalidate(task.getTaskId()); // 失效缓存
-		try {
-			taskCache.put(task.getTaskId(), task); // 更新缓存
-		} catch (Exception e) {
-			log.error("更新任务缓存失败：{}", task.getTaskId(), e);
-		}
-	}
-
-	/**
-	 * 根据ID查询任务（从缓存获取）
-	 */
-	public UserDownloadTask getTaskById(String taskId) {
-		try {
-			return taskCache.get(taskId);
-		} catch (Exception e) {
-			log.error("获取任务缓存失败，从仓库获取：{}", taskId, e);
-			return taskRepository.get(taskId);
-		}
-	}
-
-	/**
-	 * 查询所有任务
-	 */
-	public List<UserDownloadTask> getAllTasks() {
-		return new ArrayList<>(taskRepository.values());
-	}
 
 	/**
 	 * 优雅关闭线程池

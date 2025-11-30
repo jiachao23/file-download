@@ -18,11 +18,8 @@
           <input v-model="singleForm.filePath" placeholder="如：/data/files/test.pdf" />
         </div>
         <div class="btn-group">
-          <button class="btn primary" @click="handleSingleDownload" :disabled="singleDownloading">
-            {{ singleDownloading ? '下载中...' : '开始下载' }}
-          </button>
-          <button class="btn cancel" @click="cancelSingleDownload" v-if="singleDownloading">
-            取消下载
+          <button class="btn primary" @click="handleSingleDownload">
+            下载
           </button>
         </div>
       </div>
@@ -101,7 +98,7 @@
                   <button
                       class="btn cancel small"
                       @click.stop="cancelTask(task.taskId)"
-                      :disabled="task.isFinished || task.isCancelled"
+                      :disabled="task.finished || task.cancelled"
                   >
                     取消
                   </button>
@@ -110,7 +107,7 @@
                 <!-- 进度条 -->
                 <div class="progress-bar">
                   <div class="progress-fill" :style="{ width: task.progress + '%',
-                    backgroundColor: task.isCancelled ? '#ff4d4f' : (task.isFinished ? '#52c41a' : '#1677ff') }"></div>
+                    backgroundColor: task.cancelled ? '#ff4d4f' : (task.finished ? '#52c41a' : '#1677ff') }"></div>
                 </div>
 
                 <!-- 任务信息 -->
@@ -147,11 +144,11 @@ import {
   downloadSingleLocalFile,
   submitMultiLocalFileTask,
   cancelMultiFileTask,
-  listenMultiFileProgress,
   getAllTasks,
   getTaskStatus,
   clearRequestCache
 } from '../api/downloadApi';
+import {createSSE} from "../api/sse.js";
 
 // ========== 性能监控 ==========
 const monitorPerformance = () => {
@@ -196,8 +193,6 @@ const isSidebarExpanded = ref(false);
 const singleForm = reactive({
   filePath: '',
 });
-const singleDownloading = ref(false);
-let singleAbortController = null;
 
 // 多文件下载状态
 const multiForm = reactive({
@@ -255,8 +250,8 @@ const visibleTasks = computed(() => {
 // ========== 工具函数 ==========
 // 获取任务状态文本
 const getTaskStatusText = (task) => {
-  if (task.isCancelled) return '已取消';
-  if (task.isFinished) return '已完成';
+  if (task.cancelled) return '已取消';
+  if (task.finished) return '已完成';
   return '下载中';
 };
 
@@ -295,13 +290,8 @@ const refreshAllTaskStatus = async () => {
         };
       });
 
-      // 补充本地单文件任务
-      const localSingleTasks = taskList.value.filter(
-          t => t.type === 'single' && !mergedTasks.some(mt => mt.taskId === t.taskId)
-      );
-
       // 防抖更新任务列表
-      updateTaskListDebounced([...mergedTasks, ...localSingleTasks]);
+      updateTaskListDebounced([...mergedTasks]);
 
       // 预格式化文件大小
       mergedTasks.forEach(task => {
@@ -318,7 +308,7 @@ const refreshAllTaskStatus = async () => {
 // 重建SSE连接
 const rebuildSSEConnections = () => {
   const unfinishedMultiTasks = taskList.value.filter(
-      task => task.type === 'multi' && !task.isFinished && !task.isCancelled
+      task => task.type === 'multi' && !task.finished && !task.cancelled
   );
 
   unfinishedMultiTasks.forEach(task => {
@@ -337,8 +327,8 @@ const rebuildSSEConnections = () => {
         }
 
         // 仅对未完成任务建立SSE连接
-        if (!latestTask.isFinished && !latestTask.isCancelled) {
-          const sse = listenMultiFileProgress(
+        if (!latestTask.finished && !latestTask.cancelled) {
+          const sse = createSSE(
               task.taskId,
               (data) => {
                 const newTasks = [...taskList.value];
@@ -356,7 +346,7 @@ const rebuildSSEConnections = () => {
                   // 防抖更新
                   updateTaskListDebounced(newTasks);
 
-                  if (data.isFinished && !data.isCancelled) {
+                  if (data.finished && !data.cancelled) {
                     message.success('多文件下载任务完成！');
                   }
                 }
@@ -389,40 +379,16 @@ const handleSingleDownload = async () => {
     return;
   }
 
-  const taskId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-  const singleTask = {
-    taskId,
-    type: 'single',
-    filePath: singleForm.filePath,
-    progress: 0,
-    downloadedBytes: 0,
-    totalBytes: 0,
-    isFinished: false,
-    isCancelled: false,
-    createTime: Date.now()
-  };
-
-  // 添加任务到列表
-  const newTasks = [...taskList.value, singleTask];
-  updateTaskListDebounced(newTasks);
-
-  isSidebarExpanded.value = true;
-  singleDownloading.value = true;
-  singleAbortController = new AbortController();
-
   try {
     const response = await downloadSingleLocalFile(
         {
           filePath: singleForm.filePath,
           rangeStart: 0,
         },
-        singleAbortController.signal
     );
 
     // 获取文件总大小
     const totalBytes = Number(response.headers['content-length']) || 0;
-    singleTask.totalBytes = totalBytes;
-
     // 保存文件
     const fileNameMatch = response.headers['content-disposition']?.match(/filename="(.*)"/);
     const fileName = fileNameMatch ? decodeURIComponent(fileNameMatch[1]) : 'download.file';
@@ -434,53 +400,17 @@ const handleSingleDownload = async () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    // 模拟进度更新（实际下载由浏览器处理）
-    let loaded = 0;
-    const progressInterval = setInterval(() => {
-      if (singleTask.isCancelled || singleTask.isFinished) {
-        clearInterval(progressInterval);
-        return;
-      }
-
-      loaded += 4096 * 10; // 加速模拟
-      if (loaded >= totalBytes) {
-        loaded = totalBytes;
-        singleTask.isFinished = true;
-        singleTask.progress = 100;
-        clearInterval(progressInterval);
-        message.success('单文件下载完成！');
-      }
-
-      singleTask.progress = Math.floor((loaded / totalBytes) * 100);
-      singleTask.downloadedBytes = loaded;
-
-      // 防抖更新任务列表
-      const updatedTasks = [...taskList.value];
-      const index = updatedTasks.findIndex(t => t.taskId === taskId);
-      if (index !== -1) {
-        updatedTasks[index] = { ...singleTask };
-        updateTaskListDebounced(updatedTasks);
-      }
-
-      // 预格式化文件大小
-      formatBytes(loaded);
-      formatBytes(totalBytes);
-    }, 100);
-
   } catch (e) {
     if (e.name !== 'AbortError') {
       message.error('下载失败：' + e.message);
       const taskIndex = taskList.value.findIndex(t => t.taskId === taskId);
       if (taskIndex !== -1) {
         const newTasks = [...taskList.value];
-        newTasks[taskIndex].isFinished = true;
+        newTasks[taskIndex].finished = true;
         newTasks[taskIndex].progress = 0;
         updateTaskListDebounced(newTasks);
       }
     }
-  } finally {
-    singleDownloading.value = false;
   }
 };
 
@@ -550,7 +480,7 @@ const handleMultiSubmit = async () => {
     }
 
     // 建立SSE连接
-    const sse = listenMultiFileProgress(
+    const sse = createSSE(
         taskId,
         (data) => {
           const newTasks = [...taskList.value];
@@ -567,7 +497,7 @@ const handleMultiSubmit = async () => {
 
             updateTaskListDebounced(newTasks);
 
-            if (data.isFinished && !data.isCancelled) {
+            if (data.finished && !data.cancelled) {
               message.success('多文件下载任务完成！');
             }
           }
@@ -602,25 +532,12 @@ const cancelTask = async (taskId) => {
   const task = taskList.value[taskIndex];
   const newTasks = [...taskList.value];
 
-  // 单文件任务取消
-  if (task.type === 'single') {
-    if (singleAbortController) {
-      singleAbortController.abort();
-      singleDownloading.value = false;
-    }
-    newTasks[taskIndex].isCancelled = true;
-    newTasks[taskIndex].progress = 0;
-    updateTaskListDebounced(newTasks);
-    message.info('已取消单文件下载任务');
-    return;
-  }
-
   // 多文件任务取消
   try {
     const res = await cancelMultiFileTask(taskId);
     const resData = typeof res === 'string' ? JSON.parse(res) : res;
 
-    newTasks[taskIndex].isCancelled = true;
+    newTasks[taskIndex].cancelled = true;
     newTasks[taskIndex].progress = 0;
     updateTaskListDebounced(newTasks);
 
@@ -636,20 +553,10 @@ const cancelTask = async (taskId) => {
   }
 };
 
-// 取消单文件下载
-const cancelSingleDownload = () => {
-  const runningSingleTask = taskList.value.find(
-      t => t.type === 'single' && !t.isFinished && !t.isCancelled
-  );
-  if (runningSingleTask) {
-    cancelTask(runningSingleTask.taskId);
-  }
-};
-
 // 清空已完成任务
 const clearFinishedTasks = () => {
   const newTasks = taskList.value.filter(
-      task => !task.isFinished || task.isCancelled
+      task => !task.finished || task.cancelled
   );
   updateTaskListDebounced(newTasks);
   message.success('已清空已完成任务');
@@ -658,7 +565,7 @@ const clearFinishedTasks = () => {
 // 取消所有未完成任务
 const cancelAllUnfinishedTasks = async () => {
   const unfinishedTasks = taskList.value.filter(
-      task => !task.isFinished && !task.isCancelled
+      task => !task.finished && !task.cancelled
   );
 
   if (unfinishedTasks.length === 0) {
@@ -685,22 +592,6 @@ onMounted(async () => {
     visibleCount.value = Math.floor(container.clientHeight / itemHeight) + 2;
   }
 
-  // 单文件任务刷新后标记为取消
-  const singleTasks = taskList.value.filter(
-      t => t.type === 'single' && !t.isFinished && !t.isCancelled
-  );
-  if (singleTasks.length > 0) {
-    const newTasks = [...taskList.value];
-    singleTasks.forEach(task => {
-      const index = newTasks.findIndex(t => t.taskId === task.taskId);
-      if (index !== -1) {
-        newTasks[index].isCancelled = true;
-        newTasks[index].progress = 0;
-      }
-    });
-    updateTaskListDebounced(newTasks);
-  }
-
   // 拉取最新任务状态
   await refreshAllTaskStatus();
 
@@ -713,7 +604,7 @@ onMounted(async () => {
     const newTasks = taskList.value.filter(task => {
       const createTime = task.createTime || 0;
       // 保留：未完成任务 或 7天内的已完成任务
-      return !task.isFinished || !task.isCancelled || (now - createTime < 7 * 24 * 60 * 60 * 1000);
+      return !task.finished || !task.cancelled || (now - createTime < 7 * 24 * 60 * 60 * 1000);
     });
     updateTaskListDebounced(newTasks);
   };
@@ -726,11 +617,6 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  // 取消单文件下载
-  if (singleAbortController) {
-    singleAbortController.abort();
-  }
-
   // 关闭所有SSE连接
   sseInstances.forEach((sse) => {
     if (sse.close) {

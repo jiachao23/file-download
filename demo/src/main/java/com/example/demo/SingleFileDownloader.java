@@ -56,9 +56,6 @@ public class SingleFileDownloader {
 
 			while (inChannel.read(buffer) != -1) {
 				buffer.flip();
-
-				// 限速控制（优化算法：避免频繁sleep）
-
 				bytesWritten += outChannel.write(buffer);
 				buffer.clear();
 			}

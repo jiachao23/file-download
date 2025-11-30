@@ -22,6 +22,9 @@ public class DownloadController {
 	@Autowired
 	private MultiFileDownloader multiFileDownloader;
 
+	@Autowired
+	private DownloadTaskManager taskManager;
+
 	/**
 	 * 单文件下载（服务器本地）
 	 */
@@ -87,7 +90,7 @@ public class DownloadController {
 	@GetMapping("/task/status/{taskId}")
 	public ResponseEntity<UserDownloadTask> getTaskStatus(@PathVariable String taskId) {
 		try {
-			UserDownloadTask task = multiFileDownloader.getTaskById(taskId);
+			UserDownloadTask task = taskManager.getTaskById(taskId);
 			if (task == null) {
 				return ResponseEntity.notFound().build();
 			}
@@ -104,7 +107,7 @@ public class DownloadController {
 	@GetMapping("/task/all")
 	public ResponseEntity<List<UserDownloadTask>> getAllTasks() {
 		try {
-			return ResponseEntity.ok(multiFileDownloader.getAllTasks());
+			return ResponseEntity.ok(taskManager.getAllTasks());
 		} catch (Exception e) {
 			log.error("查询所有任务失败", e);
 			return ResponseEntity.internalServerError().build();
