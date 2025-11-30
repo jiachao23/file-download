@@ -2,231 +2,154 @@
   <div class="download-manager">
     <!-- 主Tab面板（页面中间） -->
     <div class="main-panel">
-      <a-tabs v-model:activeKey="activeTab" type="card" size="middle">
-        <a-tab-pane tab="单文件下载" key="single">
-          <a-form layout="vertical" :label-col="{ span: 4 }" :wrapper-col="{ span: 20 }">
-            <a-form-item label="服务器文件路径" required>
-              <a-input
-                  v-model:value="singleForm.filePath"
-                  placeholder="如：/data/files/test.pdf"
-                  allow-clear
-              />
-            </a-form-item>
-            <a-form-item>
-              <a-button type="primary" @click="handleSingleDownload">
-                <template #icon>
-                  <DownloadOutlined />
-                </template>
-                下载
-              </a-button>
-            </a-form-item>
-          </a-form>
-        </a-tab-pane>
-        <a-tab-pane tab="多文件下载" key="multi">
-          <a-form layout="vertical" :label-col="{ span: 4 }" :wrapper-col="{ span: 20 }">
-            <a-form-item label="用户ID" required>
-              <a-input
-                  v-model:value="multiForm.userId"
-                  placeholder="用于隔离文件目录"
-                  allow-clear
-              />
-            </a-form-item>
-            <a-form-item label="服务器文件路径（每行一个）" required>
-              <a-textarea
-                  v-model:value="multiForm.filePathStr"
-                  rows="5"
-                  placeholder="/data/files/test1.pdf&#10;/data/files/test2.zip"
-                  allow-clear
-              />
-            </a-form-item>
-            <a-form-item>
-              <a-button
-                  type="primary"
-                  @click="handleMultiSubmit"
-                  :loading="multiSubmitting"
-              >
-                <template #icon>
-                  <UploadOutlined />
-                </template>
-                {{ multiSubmitting ? '提交中...' : '提交下载任务' }}
-              </a-button>
-            </a-form-item>
-          </a-form>
-        </a-tab-pane>
-      </a-tabs>
+      <div class="tabs">
+        <div class="tab" :class="{ active: activeTab === 'single' }" @click="activeTab = 'single'">
+          单文件下载
+        </div>
+        <div class="tab" :class="{ active: activeTab === 'multi' }" @click="activeTab = 'multi'">
+          多文件下载
+        </div>
+      </div>
+
+      <!-- 单文件下载表单 -->
+      <div class="form-panel" v-if="activeTab === 'single'">
+        <div class="form-item">
+          <label>服务器文件路径：</label>
+          <input v-model="singleForm.filePath" placeholder="如：/data/files/test.pdf" />
+        </div>
+        <div class="btn-group">
+          <button class="btn primary" @click="handleSingleDownload">
+            下载
+          </button>
+        </div>
+      </div>
+
+      <!-- 多文件下载表单 -->
+      <div class="form-panel" v-if="activeTab === 'multi'">
+        <div class="form-item">
+          <label>用户ID：</label>
+          <input v-model="multiForm.userId" placeholder="用于隔离文件目录" />
+        </div>
+        <div class="form-item">
+          <label>服务器文件路径（每行一个）：</label>
+          <textarea v-model="multiForm.filePathStr" rows="5" placeholder="/data/files/test1.pdf&#10;/data/files/test2.zip"></textarea>
+        </div>
+        <button class="btn primary" @click="handleMultiSubmit" :disabled="multiSubmitting">
+          {{ multiSubmitting ? '提交中...' : '提交下载任务' }}
+        </button>
+      </div>
     </div>
 
-    <!-- 触发条（纯Vue模板语法） -->
+    <!-- 🔥 触发条移到外层：与侧边栏同级 -->
     <div
-        class="sidebar-trigger-wrapper"
+        class="sidebar-trigger"
+        @click="toggleSidebarExpand"
         @mouseenter="handleTriggerMouseEnter"
         @mouseleave="handleTriggerMouseLeave"
     >
-      <a-tooltip placement="left" title="下载任务面板">
-        <a-button
-            type="primary"
-            shape="circle"
-            size="large"
-            class="main-trigger-btn"
-            @click="toggleDrawer"
-        >
-          <!-- 新正确写法（通用 Icon 组件） -->
-          <Icon icon="list" />
-        </a-button>
-      </a-tooltip>
-
-      <a-tooltip placement="left" :title="isDrawerPinned ? '取消固定' : '固定面板'">
-        <a-button
-            shape="circle"
-            size="middle"
-            class="pin-trigger-btn"
-            @click.stop="toggleDrawerPin"
-        >
-          <PushpinOutlined
-              :style="{
-              transform: isDrawerPinned ? 'rotate(0deg)' : 'rotate(-45deg)',
-              transition: 'transform 0.2s ease'
-            }"
-          />
-        </a-button>
-      </a-tooltip>
+      <span class="trigger-icon">📋</span>
+      <button
+          class="pin-btn"
+          @click.stop="toggleSidebarPin"
+          title="固定/取消固定任务面板"
+      >
+        {{ isSidebarPinned ? '📌' : '📍' }}
+      </button>
     </div>
 
-    <!-- 抽屉侧边栏（纯Vue模板语法） -->
-    <a-drawer
-        title="下载任务列表"
-        placement="right"
-        :width="480"
-        :visible="drawerVisible"
-        :closable="!isDrawerPinned"
-        :mask="false"
-        :destroy-on-close="true"
-        @close="handleDrawerClose"
-        @mouseenter="handleDrawerMouseEnter"
-        @mouseleave="handleDrawerMouseLeave"
-        class="task-drawer"
+    <!-- 右侧悬浮任务面板 -->
+    <div
+        class="task-sidebar"
+        :class="{
+        'expanded': isSidebarExpanded || (isMouseOverTrigger && !isSidebarPinned),
+        'pinned': isSidebarPinned
+      }"
+        @mouseenter="handleSidebarMouseEnter"
+        @mouseleave="handleSidebarMouseLeave"
     >
-      <!-- 抽屉头部操作按钮 -->
-      <template #extra>
-        <a-space size="small">
-          <a-button size="small" @click="clearFinishedTasks">
-            <template #icon>
-              <DeleteOutlined />
-            </template>
-            清空已完成
-          </a-button>
-          <a-button size="small" type="danger" @click="cancelAllUnfinishedTasks">
-            <template #icon>
-              <CloseOutlined />
-            </template>
-            取消所有
-          </a-button>
-        </a-space>
-      </template>
+      <!-- 任务列表内容区 -->
+      <div class="sidebar-content">
+        <div class="sidebar-header">
+          <h3>下载任务列表</h3>
+          <div class="task-actions">
+            <button class="btn small" @click="clearFinishedTasks">
+              清空已完成
+            </button>
+            <button class="btn small cancel" @click="cancelAllUnfinishedTasks">
+              取消所有
+            </button>
+            <button class="btn small cancel" @click="collapseSidebar">
+              收回
+            </button>
+          </div>
+        </div>
 
-      <!-- 空状态 -->
-      <a-empty
-          v-if="taskList.length === 0"
-          description="暂无下载任务，请先提交下载任务"
-      >
-        <a-button type="primary" @click="activeTab = 'single'">
-          去下载文件
-        </a-button>
-      </a-empty>
+        <!-- 空状态提示 -->
+        <div class="empty-tip" v-if="taskList.length === 0">
+          暂无下载任务，请先提交下载任务
+        </div>
 
-      <!-- 任务列表（纯Vue模板语法） -->
-      <div class="task-list-container" v-else ref="taskListContainer">
-        <div
-            class="virtual-list"
-            :style="{ height: `${taskList.length * 180}px`, position: 'relative' }"
-        >
+        <!-- 虚拟列表任务容器 -->
+        <div class="task-list-container" ref="taskListContainer">
           <div
-              class="virtual-list-content"
-              :style="{ transform: `translateY(${scrollTop}px)`, position: 'absolute', top: 0, left: 0, width: '100%' }"
+              class="virtual-list"
+              :style="{ height: `${taskList.length * 120}px`, position: 'relative' }"
+              v-if="taskList.length > 0"
           >
-            <a-card
-                v-for="task in visibleTasks"
-                :key="task.taskId"
-                class="task-card"
-                :bordered="true"
-                size="default"
-                :style="{ marginBottom: '12px', padding: '8px 0' }"
+            <div
+                class="virtual-list-content"
+                :style="{ transform: `translateY(${scrollTop}px)`, position: 'absolute', top: 0, left: 0, width: '100%' }"
             >
-              <template #title>
-                <a-space style="width: 100%; justify-content: space-between;">
-                  <a-tag :color="task.type === 'single' ? 'blue' : 'purple'">
-                    {{ task.type === 'single' ? '单文件' : '多文件' }}
-                  </a-tag>
-                  <a-button
-                      size="small"
-                      type="text"
-                      danger
+              <div class="task-item" v-for="task in visibleTasks" :key="task.taskId">
+                <div class="task-header">
+                  <span class="task-type">{{ task.type === 'single' ? '单文件' : '多文件' }}</span>
+                  <button
+                      class="btn cancel small"
                       @click.stop="cancelTask(task.taskId)"
                       :disabled="task.finished || task.cancelled"
                   >
-                    <template #icon>
-                      <CloseOutlined />
-                    </template>
                     取消
-                  </a-button>
-                </a-space>
-              </template>
-
-              <!-- 进度条 -->
-              <a-progress
-                  :percent="task.progress"
-                  :status="getProgressStatus(task)"
-                  size="default"
-                  :stroke-color="{
-                  'active': '#1677ff',
-                  'success': '#52c41a',
-                  'exception': '#ff4d4f'
-                }"
-                  class="task-progress"
-                  style="margin: 10px 0;"
-              />
-
-              <!-- 任务信息 -->
-              <a-space direction="vertical" size="middle" class="task-info" style="width: 100%;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <a-text style="font-size: 14px; color: #333;">
-                    {{ formattedSizes[task.downloadedBytes] || '0 B' }} / {{ formattedSizes[task.totalBytes] || '0 B' }}
-                  </a-text>
-                  <a-tag :color="getStatusColor(task)" size="small">
-                    {{ getTaskStatusText(task) }}
-                  </a-tag>
+                  </button>
                 </div>
 
-                <a-text v-if="task.type === 'multi'" style="font-size: 13px; color: #666;">
-                  文件进度：{{ task.completedCount }}/{{ task.totalCount }}
-                </a-text>
+                <!-- 进度条 -->
+                <div class="progress-bar">
+                  <div class="progress-fill" :style="{
+                    width: task.progress + '%',
+                    backgroundColor: task.cancelled ? '#ff4d4f' : (task.finished ? '#52c41a' : '#1677ff')
+                  }"></div>
+                </div>
 
-                <a-text
-                    v-if="task.filePath"
-                    ellipsis
-                    :title="task.filePath"
-                    style="font-size: 13px; color: #666; line-height: 1.5;"
-                >
-                  路径：{{ task.filePath }}
-                </a-text>
-              </a-space>
-            </a-card>
+                <!-- 任务信息 -->
+                <div class="task-info">
+                  <p class="progress-text">{{ task.progress }}%</p>
+                  <p v-if="task.type === 'multi'" class="file-count">
+                    {{ task.completedCount }}/{{ task.totalCount }} 文件
+                  </p>
+                  <p class="file-size">
+                    {{ formattedSizes[task.downloadedBytes] || '0 B' }}/{{ formattedSizes[task.totalBytes] || '0 B' }}
+                  </p>
+                  <p class="task-status">
+                    <span :class="`status-${getTaskStatusText(task)}`">
+                      {{ getTaskStatusText(task) }}
+                    </span>
+                  </p>
+                  <p v-if="task.filePath" class="file-path">
+                    {{ task.filePath }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </a-drawer>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
 import { message } from 'ant-design-vue';
-// 导入AntD图标（作为Vue组件，非JSX）
-import {
-  DownloadOutlined, UploadOutlined, PushpinOutlined,
-  DeleteOutlined, CloseOutlined
-} from '@ant-design/icons-vue';
-// 导入业务API
 import {
   downloadSingleLocalFile,
   submitMultiLocalFileTask,
@@ -263,12 +186,14 @@ monitorPerformance();
 
 // ========== 基础状态 ==========
 const activeTab = ref('single');
-const drawerVisible = ref(false);
-const isDrawerPinned = ref(false);
-const isMouseOverDrawer = ref(false);
-const isMouseOverTrigger = ref(false);
 
-// 表单状态
+// 侧边栏核心状态（外层触发条专用）
+const isSidebarExpanded = ref(false);    // 是否展开
+const isSidebarPinned = ref(false);      // 是否固定
+const isMouseOverTrigger = ref(false);   // 鼠标是否悬浮在触发条上
+const isMouseOverSidebar = ref(false);   // 鼠标是否悬浮在侧边栏上
+
+// 单文件/多文件表单状态
 const singleForm = reactive({ filePath: '' });
 const multiForm = reactive({ userId: '', filePathStr: '' });
 const multiSubmitting = ref(false);
@@ -293,17 +218,16 @@ const updateTaskListDebounced = debounce((tasks) => {
 // 监听任务列表变化
 watch(taskList, (newTasks) => {
   localStorage.setItem('downloadTasks', JSON.stringify(newTasks));
-  if (newTasks.length > 0 && !drawerVisible.value && !isDrawerPinned.value) {
-    drawerVisible.value = true;
+  if (newTasks.length > 0 && !isSidebarExpanded.value && !isSidebarPinned.value) {
+    isSidebarExpanded.value = true;
   }
 }, { deep: true });
 
-// ========== 虚拟列表配置 ==========
+// ========== 虚拟列表 ==========
 const taskListContainer = ref(null);
 const scrollTop = ref(0);
-const itemHeight = 180;
-const visibleCount = ref(6);
-
+const itemHeight = 120;
+const visibleCount = ref(10);
 const visibleTasks = computed(() => {
   const start = Math.floor(scrollTop.value / itemHeight);
   const end = start + visibleCount.value;
@@ -311,24 +235,13 @@ const visibleTasks = computed(() => {
 });
 
 // ========== 工具函数 ==========
-const getProgressStatus = (task) => {
-  if (task.cancelled) return 'exception';
-  if (task.finished) return 'success';
-  return 'active';
-};
-
 const getTaskStatusText = (task) => {
   if (task.cancelled) return '已取消';
   if (task.finished) return '已完成';
   return '下载中';
 };
 
-const getStatusColor = (task) => {
-  if (task.cancelled) return 'error';
-  if (task.finished) return 'success';
-  return 'processing';
-};
-
+// 格式化文件大小（本地函数，兼容所有环境）
 const formatBytes = (bytes) => {
   if (formattedSizes.value[bytes]) return formattedSizes.value[bytes];
   if (bytes === 0) return '0 B';
@@ -340,53 +253,64 @@ const formatBytes = (bytes) => {
   return result;
 };
 
-// ========== 抽屉&触发条交互逻辑 ==========
+// ========== 外层触发条交互逻辑（核心） ==========
+// 触发条鼠标进入
 const handleTriggerMouseEnter = () => {
   isMouseOverTrigger.value = true;
-  if (!isDrawerPinned.value) {
-    drawerVisible.value = true;
-  }
 };
 
+// 触发条鼠标离开
 const handleTriggerMouseLeave = () => {
   isMouseOverTrigger.value = false;
-  if (!isDrawerPinned.value && !isMouseOverDrawer.value && taskList.value.length === 0) {
-    drawerVisible.value = false;
+  // 未固定且鼠标离开触发条+离开侧边栏 → 收起
+  if (!isSidebarPinned.value && !isMouseOverSidebar.value && taskList.value.length === 0) {
+    isSidebarExpanded.value = false;
   }
 };
 
-const handleDrawerMouseEnter = () => {
-  isMouseOverDrawer.value = true;
-};
-
-const handleDrawerMouseLeave = () => {
-  isMouseOverDrawer.value = false;
-  if (!isDrawerPinned.value && !isMouseOverTrigger.value && taskList.value.length === 0) {
-    drawerVisible.value = false;
+// 侧边栏鼠标进入
+const handleSidebarMouseEnter = () => {
+  isMouseOverSidebar.value = true;
+  if (!isSidebarPinned.value) {
+    isSidebarExpanded.value = true;
   }
 };
 
-const toggleDrawer = () => {
-  drawerVisible.value = !drawerVisible.value;
+// 侧边栏鼠标离开
+const handleSidebarMouseLeave = () => {
+  isMouseOverSidebar.value = false;
+  // 未固定且鼠标离开触发条 → 收起
+  if (!isSidebarPinned.value && !isMouseOverTrigger.value && taskList.value.length === 0) {
+    isSidebarExpanded.value = false;
+  }
 };
 
-const toggleDrawerPin = () => {
-  isDrawerPinned.value = !isDrawerPinned.value;
-  if (isDrawerPinned.value) {
-    drawerVisible.value = true;
+// 切换侧边栏展开/收起
+const toggleSidebarExpand = () => {
+  isSidebarExpanded.value = !isSidebarExpanded.value;
+};
+
+// 切换侧边栏固定状态
+const toggleSidebarPin = () => {
+  isSidebarPinned.value = !isSidebarPinned.value;
+  if (isSidebarPinned.value) {
+    isSidebarExpanded.value = true; // 固定时强制展开
     message.success('任务面板已固定');
   } else {
     message.success('任务面板已取消固定');
+    // 取消固定后，无任务则收起
     if (taskList.value.length === 0) {
-      drawerVisible.value = false;
+      isSidebarExpanded.value = false;
     }
   }
 };
 
-const handleDrawerClose = () => {
-  drawerVisible.value = false;
-  if (taskList.value.length === 0) {
-    isDrawerPinned.value = false;
+// 手动收回侧边栏
+const collapseSidebar = () => {
+  isSidebarExpanded.value = false;
+  if (isSidebarPinned.value) {
+    isSidebarPinned.value = false;
+    message.info('已取消固定并收回任务面板');
   }
 };
 
@@ -458,6 +382,7 @@ const rebuildSSEConnections = () => {
   });
 };
 
+// 单文件下载
 const handleSingleDownload = async () => {
   if (!singleForm.filePath) {
     message.warning('请输入服务器文件路径！');
@@ -522,6 +447,7 @@ const handleSingleDownload = async () => {
   }
 };
 
+// 提交多文件任务
 const handleMultiSubmit = async () => {
   if (!multiForm.userId || !multiForm.filePathStr) {
     message.warning('请输入用户ID和文件路径！');
@@ -603,6 +529,7 @@ const handleMultiSubmit = async () => {
   }
 };
 
+// 取消任务
 const cancelTask = async (taskId) => {
   const taskIndex = taskList.value.findIndex(t => t.taskId === taskId);
   if (taskIndex === -1) {
@@ -638,6 +565,7 @@ const cancelTask = async (taskId) => {
   }
 };
 
+// 清空已完成任务
 const clearFinishedTasks = () => {
   const newTasks = taskList.value.filter(
       task => !task.finished || task.cancelled
@@ -646,6 +574,7 @@ const clearFinishedTasks = () => {
   message.success('已清空已完成任务');
 };
 
+// 取消所有未完成任务
 const cancelAllUnfinishedTasks = async () => {
   const unfinishedTasks = taskList.value.filter(
       task => !task.finished && !task.cancelled
@@ -663,6 +592,7 @@ const cancelAllUnfinishedTasks = async () => {
 
 // ========== 生命周期 ==========
 onMounted(async () => {
+  // 初始化虚拟列表
   const container = taskListContainer.value;
   if (container) {
     container.addEventListener('scroll', (e) => {
@@ -674,6 +604,7 @@ onMounted(async () => {
   await refreshAllTaskStatus();
   rebuildSSEConnections();
 
+  // 定时清理过期任务
   const cleanExpiredTasks = () => {
     const now = Date.now();
     const newTasks = taskList.value.filter(task => {
@@ -688,6 +619,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  // 关闭所有SSE连接
   sseInstances.forEach((sse) => {
     if (sse.close) sse.close();
     else if (sse.source) sse.source.close();
@@ -714,112 +646,319 @@ onUnmounted(() => {
   background: #fff;
 }
 
-/* 触发条容器 */
-.sidebar-trigger-wrapper {
+.tabs {
+  display: flex;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tab {
+  padding: 10px 20px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tab.active {
+  border-bottom-color: #1677ff;
+  font-weight: 600;
+}
+
+.form-panel {
+  padding: 10px 0;
+}
+
+.form-item {
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-item label {
+  margin-bottom: 5px;
+  font-weight: 500;
+}
+
+.form-item input, .form-item textarea {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.btn-group {
+  display: flex;
+  gap: 10px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.btn.primary {
+  background-color: #1677ff;
+  color: white;
+}
+
+.btn.primary:hover {
+  background-color: #4096ff;
+}
+
+.btn.cancel {
+  background-color: #ff4d4f;
+  color: white;
+}
+
+.btn.cancel:hover {
+  background-color: #ff7875;
+}
+
+.btn.small {
+  padding: 4px 8px;
+  font-size: 12px;
+  background-color: #f5f5f5;
+  color: #666;
+}
+
+.btn.small.cancel {
+  background-color: #fff2f2;
+  color: #ff4d4f;
+}
+
+/* 🔥 外层触发条样式（核心修改） */
+.sidebar-trigger {
   position: fixed;
   top: 50%;
-  right: 20px;
+  right: 0; /* 贴在最右侧 */
   transform: translateY(-50%);
+  width: 50px;
+  height: 120px;
+  background-color: #f0f7ff;
+  border-radius: 10px 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1002; /* 比侧边栏高，确保不被遮挡 */
+  box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+  border: 1px solid #e8f3ff;
+  border-right: none;
+  transition: all 0.2s ease;
+}
+
+.sidebar-trigger:hover {
+  background-color: #e8f3ff;
+}
+
+.trigger-icon {
+  font-size: 24px;
+  margin-bottom: 10px;
+  user-select: none;
+  color: #1677ff;
+}
+
+.pin-btn {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  color: #1677ff;
+  transition: all 0.2s;
+}
+
+.pin-btn:hover {
+  background-color: rgba(22, 119, 255, 0.2);
+  transform: scale(1.1);
+}
+
+/* 右侧悬浮任务面板 */
+.task-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 0; /* 收起时宽度为0 */
+  background-color: #fff;
+  border-left: 1px solid #e5e7eb;
+  transition: width 0.3s ease;
+  box-shadow: -2px 0 10px rgba(0,0,0,0.05);
+  z-index: 1001; /* 低于触发条 */
+  overflow: hidden;
+}
+
+/* 展开/固定时的宽度 */
+.task-sidebar.expanded,
+.task-sidebar.pinned {
+  width: 450px;
+  /* 给触发条留位置：右侧50px */
+  padding-left: 0;
+}
+
+.sidebar-content {
+  height: 100%;
+  width: 450px;
+  padding: 20px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  color: #1677ff;
+  font-size: 18px;
+}
+
+.task-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.empty-tip {
+  text-align: center;
+  padding: 40px 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.task-list-container {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 1000;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
 }
 
-.main-trigger-btn {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  transition: all 0.2s ease;
-  overflow-y: auto !important;
+.task-item {
+  padding: 15px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
 }
 
-.main-trigger-btn:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
 }
 
-.pin-trigger-btn {
-  background: #fff;
-  border: 1px solid #d9d9d9;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
+.task-type {
+  background-color: #e8f3ff;
+  color: #1677ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
-.pin-trigger-btn:hover {
-  background: #f5f5f5;
-  transform: scale(1.05);
+.progress-bar {
+  height: 8px;
+  width: 100%;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 10px;
 }
 
-/* 抽屉样式 */
-.task-drawer :deep(.ant-drawer-body) {
-  padding: 16px 20px !important;
-  overflow: visible !important;
+.progress-fill {
+  height: 100%;
+  background-color: #1677ff;
+  transition: width 0.3s ease;
 }
 
-/* 任务列表容器 */
-.task-list-container {
-  max-height: calc(100vh - 180px) !important;
-  padding: 8px 4px !important;
-  margin: 0 !important;
+.task-info {
+  font-size: 14px;
+  color: #333;
 }
 
-/* Card样式修复 */
-.task-card :deep(.ant-card-body) {
-  padding: 12px 16px !important;
-  overflow: visible !important;
-  box-sizing: border-box !important;
+.progress-text {
+  font-weight: 600;
+  margin: 0 0 5px 0;
+  color: #1677ff;
 }
 
-/* 虚拟列表 */
+.file-count, .file-size {
+  margin: 0 0 3px 0;
+  color: #666;
+  font-size: 13px;
+}
+
+.task-status {
+  margin: 5px 0;
+}
+
+.status-已取消 {
+  color: #ff4d4f;
+}
+
+.status-已完成 {
+  color: #52c41a;
+}
+
+.status-下载中 {
+  color: #1677ff;
+}
+
+.file-path {
+  margin: 5px 0 0 0;
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 滚动条美化 */
+.sidebar-content::-webkit-scrollbar,
+.task-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-content::-webkit-scrollbar-track,
+.task-list-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb,
+.task-list-container::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb:hover,
+.task-list-container::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+/* 虚拟列表容器 */
 .virtual-list {
-  width: 100% !important;
-  overflow: visible !important;
+  overflow: hidden;
+  width: 100%;
 }
 
 .virtual-list-content {
-  width: 100% !important;
-  box-sizing: border-box !important;
-}
-
-/* 进度条 */
-.task-progress :deep(.ant-progress-text) {
-  font-size: 12px !important;
-  color: #666 !important;
-}
-
-/* 任务信息 */
-.task-info :deep(.ant-typography) {
-  margin: 0 !important;
-  line-height: 1.6 !important;
-  word-break: break-all !important;
-}
-
-/* 滚动条 */
-.task-list-container::-webkit-scrollbar {
-  width: 8px;
-}
-
-.task-list-container::-webkit-scrollbar-track {
-  background: #f5f5f5;
-  border-radius: 4px;
-}
-
-.task-list-container::-webkit-scrollbar-thumb {
-  background: #d9d9d9;
-  border-radius: 4px;
-}
-
-.task-list-container::-webkit-scrollbar-thumb:hover {
-  background: #bfbfbf;
-}
-
-/* 响应式 */
-@media (max-width: 768px) {
-  .task-drawer {
-    width: 90% !important;
-  }
-
-  .task-list-container {
-    max-height: calc(100vh - 200px) !important;
-  }
+  transition: transform 0.1s ease;
 }
 </style>
