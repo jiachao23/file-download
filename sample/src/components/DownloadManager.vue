@@ -211,6 +211,7 @@
               <a-space direction="vertical" size="middle" class="task-info" style="width: 100%;">
                 <!-- 阶段显示 -->
                 <div style="font-size: 13px; color: #1890ff;">
+
                   {{ getStageText(task.currentStage) }}
                 </div>
 
