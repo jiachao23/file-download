@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import com.example.demo.UserDownloadTask.BreakpointInfo;
+import com.example.demo.UserDownloadTask.TaskStage;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -66,16 +67,16 @@ public class DownloadTaskManager {
 	}
 
 	// 更新任务状态
-	public void updateTaskStatus(String taskId, UserDownloadTask.TaskStatus status) {
+	public void updateTaskStatus(String taskId, TaskStage status) {
 		UserDownloadTask task = getTaskById(taskId);
-		if (task != null) task.setStatus(status);
+		if (task != null) task.setCurrentStage(status);
 	}
 
 	// 累加已下载字节
-	public void addDownloadedBytes(String taskId, long bytes) {
-		UserDownloadTask task = getTaskById(taskId);
-		if (task != null) task.setDownloadedBytes(bytes);
-	}
+//	public void addDownloadedBytes(String taskId, long bytes) {
+//		UserDownloadTask task = getTaskById(taskId);
+//		if (task != null) task.setDownloadedBytes(bytes);
+//	}
 
 	// 设置断点偏移量
 	public void setRangeStart(String taskId, long rangeStart) {

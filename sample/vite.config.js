@@ -6,6 +6,7 @@ import { visualizer } from 'rollup-plugin-visualizer';
 export default defineConfig(({ mode }) => {
     const plugins = [vue()];
 
+
     // 打包体积分析
     if (mode === 'analyze') {
         plugins.push(visualizer({

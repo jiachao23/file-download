@@ -28,6 +28,13 @@ dependencies {
 	implementation 'com.google.guava:guava:32.1.3-jre'
 	annotationProcessor 'org.projectlombok:lombok:1.18.30'
 	implementation 'commons-io:commons-io:2.11.0'
+
+	implementation 'com.deepoove:poi-tl:1.12.1'
+	implementation 'com.alibaba:easyexcel:3.3.2'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	implementation 'com.alibaba:easyexcel:3.3.2'
+
 	// 测试依赖
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'junit:junit:4.13.2'
