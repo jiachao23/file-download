@@ -125,7 +125,7 @@ class DatasetManager:
 
     def _load_index(self):
         """毫秒级解析：仅构建行偏移量索引"""
-        if self._mm:
+        if self._mm is not None:
             self._mm.close()
         if self._file_handle:
             self._file_handle.close()
@@ -272,8 +272,15 @@ class DatasetManager:
 
     def close(self):
         self.sync_to_disk()
-        if self._mm: self._mm.close()
-        if self._file_handle: self._file_handle.close()
+        # 最终方案：直接尝试关闭，并捕获所有可能的 ValueError
+        if self._mm is not None:
+            try:
+                self._mm.close()
+            except ValueError:
+                # 无论是 "mmap closed or invalid" 还是其他 ValueError，都安全地忽略
+                pass
+        if self._file_handle:
+            self._file_handle.close()
 
     def __enter__(self): return self
     def __exit__(self, exc_type, exc_val, exc_tb): self.close()
