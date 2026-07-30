@@ -3,6 +3,9 @@ import shutil
 import numpy as np
 import tifffile
 
+from defect_info.tif_frame_process import Sample, ImageInfo, split_large_tif
+
+
 # 导入你处理逻辑所在的文件（假设你的代码在 processor.py 中）
 # from processor import Sample, ImageInfo, split_large_tif
 # 为了方便测试，这里假设你已经将类定义导入
@@ -10,7 +13,8 @@ import tifffile
 def test_frame_mapping():
     print("🛠️ [1/4] 准备测试数据...")
     test_dir = "test_verify_data"
-    output_dir = "test_verify_output"
+
+    output_dir = f"/Users/jcohy/Work/WorkSpace/IdeaProjects/file-download/defect_info/output_tifs"
 
     # 清理旧测试数据
     if os.path.exists(test_dir): shutil.rmtree(test_dir)
@@ -27,10 +31,10 @@ def test_frame_mapping():
     # Sample 2: 包含第 0, 9 帧
     samples = [
         Sample(id=1001, tif_path=fake_tif_path, image_info=[
-            ImageInfo(no=2, type=1), ImageInfo(no=5, type=1), ImageInfo(no=8, type=1)
+            ImageInfo(no=1, type=1), ImageInfo(no=2, type=1), ImageInfo(no=3, type=1)
         ]),
         Sample(id=1002, tif_path=fake_tif_path, image_info=[
-            ImageInfo(no=0, type=2), ImageInfo(no=9, type=2)
+            ImageInfo(no=4, type=2), ImageInfo(no=5, type=2)
         ])
     ]
 

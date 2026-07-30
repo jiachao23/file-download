@@ -54,7 +54,7 @@ class TifFrameProcessor:
                 save_name = f"{os.path.basename(tif_path).replace('.tif', '')}_batch_{i//self.samples_per_batch}.tif"
                 save_path = os.path.join(self.output_dir, save_name)
 
-                new_frame_offset = 0
+                new_frame_offset = 1
 
                 # 3. 使用 TiffWriter 逐帧追加写入（兼容变尺寸、无需预分配内存）
                 with tifffile.TiffWriter(save_path) as tif_writer:
@@ -64,11 +64,7 @@ class TifFrameProcessor:
                             frame_array = tif.pages[frame_no].asarray()
 
                             # 第一帧正常写入，后续帧追加写入
-                            is_first_frame = (new_frame_offset == 0)
-                            tif_writer.write(
-                                frame_array,
-                                append=not is_first_frame
-                            )
+                            tif_writer.write(frame_array)
 
                             # 更新 ImageInfo 的帧号索引
                             info_obj.no = new_frame_offset
